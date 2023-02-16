@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "com.grpc.hogwarts.service";
+option java_outer_classname = "HogwartsProto";
+option objc_class_prefix = "Hogwarts";
+
+package com.grpc.hogwarts.service;
+
+import "google/protobuf/any.proto";
+
+service HogwartsService {
+  rpc connect(stream Data) returns (stream Data){};
+}
+
+message Data {
+  google.protobuf.Any data = 1;
+}
