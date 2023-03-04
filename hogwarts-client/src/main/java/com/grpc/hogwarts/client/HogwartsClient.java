@@ -19,6 +19,9 @@ public class HogwartsClient {
     private final ElectronicList electronicList = populateElectronicList();
     private final VehicleList vehicleList = populateVehicleList();
 
+    private final int MAX_RETRY = 5;
+    private int retryCount = 0;
+
     public HogwartsClient(Channel channel){
         stub = HogwartsServiceGrpc.newStub(channel);
     }
@@ -54,12 +57,29 @@ public class HogwartsClient {
                 //on error
                 Status status = Status.fromThrowable(throwable);
                 System.out.println("Error: " + status);
-            }
+                    try {
+                        retryConnection();
+                    } catch (InterruptedException e) {
+                        throw new RuntimeException(e);
+                    }
+                }
 
             @Override
             public void onCompleted() {
                 //on completion
                 System.out.println("Server has completed sending us something");
+            }
+
+            private void retryConnection() throws InterruptedException {
+                if (retryCount < MAX_RETRY) {
+                    retryCount++;
+                    Thread.sleep(5000);
+                    System.out.println("Retrying connection to server");
+                    connect();
+                } else {
+                    System.out.println("Max retry count reached. Shutting down client");
+                    System.exit(0);
+                }
             }
         });
 

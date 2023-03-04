@@ -30,7 +30,10 @@ public class HogwartsServer  {
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             System.out.println("Received shutdown request");
             try {
-                server.shutdown().awaitTermination(30, TimeUnit.SECONDS);
+                server.shutdown().awaitTermination(5, TimeUnit.SECONDS);
+                for (StreamObserver<ServerData> observer : observers.values()) {
+                    observer.onCompleted();
+                }
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
@@ -97,12 +100,15 @@ class HogwartsServerObserver implements StreamObserver<ClientData> {
         //on error
         Status status = Status.fromThrowable(throwable);
         System.out.println("Error: " + status);
+        System.out.println("Removing client " + clientId + " from server");
+        serverObservers.remove(clientId);
     }
 
     @Override
     public void onCompleted() {
         //on completion
-        System.out.println("Client has completed sending us something");
+        System.out.println("Client " + clientId + "has completed sending us something");
+        serverObservers.remove(clientId);
     }
 }
 
