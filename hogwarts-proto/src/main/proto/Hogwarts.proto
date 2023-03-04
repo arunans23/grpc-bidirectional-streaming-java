@@ -7,12 +7,50 @@ option objc_class_prefix = "Hogwarts";
 
 package com.grpc.hogwarts.service;
 
-import "google/protobuf/any.proto";
-
 service HogwartsService {
-  rpc connect(stream Data) returns (stream Data){};
+  rpc connect(stream ClientData) returns (stream ServerData){};
 }
 
-message Data {
-  google.protobuf.Any data = 1;
+message HeartBeat {
+  string message = 1;
 }
+
+message Node {
+    string id = 1;
+}
+
+message Vehicle {
+  string name = 1;
+  string type = 2;
+}
+
+message VehicleList {
+  repeated Vehicle vehicles = 1;
+}
+
+message Electronic {
+  string name = 1;
+  string type = 2;
+}
+
+message ElectronicList {
+  repeated Electronic electronics = 1;
+}
+
+message ClientData {
+  oneof data {
+    VehicleList vehicleList = 1;
+    ElectronicList electronicList = 2;
+    HeartBeat heartBeat = 3;
+    Node node = 4;
+  }
+}
+
+message ServerData {
+    enum ITEM {
+        VEHICLE = 0;
+        ELECTRONIC = 1;
+       }
+    ITEM item = 1;
+}
+
