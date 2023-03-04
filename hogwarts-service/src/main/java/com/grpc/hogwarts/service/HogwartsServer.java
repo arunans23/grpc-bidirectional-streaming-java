@@ -1,17 +1,18 @@
 
 package com.grpc.hogwarts.service;
 
-import com.google.protobuf.Empty;
 import io.grpc.Server;
 import io.grpc.ServerBuilder;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 
-import java.util.*;
+import java.util.Map;
+import java.util.Scanner;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 public class HogwartsServer  {
-    private static List<StreamObserver<ServerData>> observers = new ArrayList<>();
+    private static final Map<String, StreamObserver<ServerData>> observers = new ConcurrentHashMap<>();
 
     public static void main(String[] args) throws Exception {
         // create a server and send data to client based on user input
@@ -19,8 +20,7 @@ public class HogwartsServer  {
                 .addService(new HogwartsServiceGrpc.HogwartsServiceImplBase() {
                     @Override
                     public StreamObserver<ClientData> connect(StreamObserver<ServerData> responseObserver) {
-                        observers.add(responseObserver);
-                        return new HogwartsServerObserver(responseObserver);
+                        return new HogwartsServerObserver(responseObserver, observers);
                     }
                 })
                 .build();
@@ -41,14 +41,14 @@ public class HogwartsServer  {
         while (true) {
             Scanner scanner = new Scanner(System.in);
             System.out.println("Enter node ID");
-            int nodeId = scanner.nextInt();
-            if (observers.size() < nodeId) {
+            String nodeId = scanner.next();
+            if (!observers.containsKey(nodeId)) {
                 System.out.println("Node ID doesn't exist");
                 continue;
             }
             System.out.println("Enter 1 to send electronic list, 2 to send vehicle list, 3 to exit");
             int choice = scanner.nextInt();
-            StreamObserver<ServerData> serverObserver = observers.get(nodeId - 1);
+            StreamObserver<ServerData> serverObserver = observers.get(nodeId);
             if (choice == 1) {
                 serverObserver.onNext(ServerData.newBuilder()
                         .setItem(ServerData.ITEM.ELECTRONIC)
@@ -66,10 +66,13 @@ public class HogwartsServer  {
 }
 
 class HogwartsServerObserver implements StreamObserver<ClientData> {
-    private StreamObserver<ServerData> serverObserver;
+    private final Map<String, StreamObserver<ServerData>> serverObservers;
+    private final StreamObserver<ServerData> serverObserver;
     private String clientId;
 
-    public HogwartsServerObserver(StreamObserver<ServerData> serverObserver) {
+    public HogwartsServerObserver(StreamObserver<ServerData> serverObserver,
+                                  Map<String, StreamObserver<ServerData>> serverObservers) {
+        this.serverObservers = serverObservers;
         this.serverObserver = serverObserver;
     }
     @Override
@@ -77,12 +80,13 @@ class HogwartsServerObserver implements StreamObserver<ClientData> {
         if (clientData.hasNode()) {
             clientId = clientData.getNode().getId();
             System.out.println("Received registration request from client : " + clientData.getNode().getId());
+            serverObservers.put(clientId, serverObserver);
         } else if (clientData.hasHeartBeat()) {
             System.out.println("Received heartbeat from client : " + clientId);
         } else if (clientData.hasVehicleList()) {
-            System.out.println("Received vehicle list from client : " + clientData.getVehicleList().toString());
+            System.out.println("Received vehicle list from client : " + clientData.getVehicleList());
         } else if (clientData.hasElectronicList()) {
-            System.out.println("Received electronic list from client : " + clientData.getElectronicList().toString());
+            System.out.println("Received electronic list from client : " + clientData.getElectronicList());
         } else {
             System.out.println("Received from client: " + clientData);
         }

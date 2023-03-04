@@ -7,33 +7,37 @@ import io.grpc.ManagedChannelBuilder;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 
+import java.util.Timer;
+import java.util.TimerTask;
 
 public class HogwartsClient {
 
-    private HogwartsServiceGrpc.HogwartsServiceStub stub;
+    private final HogwartsServiceGrpc.HogwartsServiceStub stub;
     private StreamObserver<ClientData> requestObserver;
-    private String nodeId = getRandomNodeId();
+    private final String nodeId = getRandomNodeId();
 
-    private ElectronicList electronicList = populateElectronicList();
-    private VehicleList vehicleList = populateVehicleList();
+    private final ElectronicList electronicList = populateElectronicList();
+    private final VehicleList vehicleList = populateVehicleList();
 
     public HogwartsClient(Channel channel){
         stub = HogwartsServiceGrpc.newStub(channel);
     }
-    public static void main(String[] args) throws InterruptedException {
+    public static void main(String[] args) {
         ManagedChannel channel = ManagedChannelBuilder.forAddress("localhost", 8080).usePlaintext().build();
         HogwartsClient client = new HogwartsClient(channel);
 
         client.connect();
-        // how to wait client from terminating
-        Thread thread = new Thread(new HeartBeatService(client.requestObserver));
-        thread.run();
+
+        // send regular heartbeat to server
+        TimerTask heartBeatService = new HeartBeatService(client.requestObserver);
+        Timer timer = new Timer();
+        timer.scheduleAtFixedRate(heartBeatService, 0, 10000);
     }
 
 
     public void connect() {
         //connect to server and send data based on the response received from the server
-        requestObserver = stub.connect(new StreamObserver<ServerData>() {
+        requestObserver = stub.connect(new StreamObserver<>() {
             @Override
             public void onNext(ServerData serverData) {
                 if (ServerData.ITEM.ELECTRONIC.equals(serverData.getItem())) {
@@ -68,7 +72,7 @@ public class HogwartsClient {
     }
 
     private String getRandomNodeId() {
-        //get random number between 1 to 100
+        //get random number between 1 and 100
         return String.valueOf((int) (Math.random() * 100));
     }
 
@@ -110,15 +114,13 @@ public class HogwartsClient {
                 .setType("PHONE")
                 .build();
 
-        ElectronicList electronicList = ElectronicList.newBuilder()
+        return ElectronicList.newBuilder()
                 .addElectronics(electronic1)
                 .addElectronics(electronic2)
                 .addElectronics(electronic3)
                 .addElectronics(electronic4)
                 .addElectronics(electronic5)
                 .build();
-
-        return electronicList;
     }
 
     private VehicleList populateVehicleList() {
@@ -147,33 +149,24 @@ public class HogwartsClient {
                 .setType("CAR")
                 .build();
 
-        VehicleList vehicleList = VehicleList.newBuilder()
+        return VehicleList.newBuilder()
                 .addVehicles(vehicle1)
                 .addVehicles(vehicle2)
                 .addVehicles(vehicle3)
                 .addVehicles(vehicle4)
                 .addVehicles(vehicle5)
                 .build();
-
-        return vehicleList;
     }
 }
 
-class HeartBeatService implements Runnable {
-    private StreamObserver<ClientData> requestObserver;
+class HeartBeatService extends TimerTask {
+    private final StreamObserver<ClientData> requestObserver;
     HeartBeatService(StreamObserver<ClientData> requestObserver) {
         this.requestObserver = requestObserver;
     }
     public void run() {
-        while (true) {
-            try {
-                requestObserver.onNext(ClientData.newBuilder()
-                        .setHeartBeat(HeartBeat.newBuilder().build())
-                        .build());
-                Thread.sleep(10000);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-        }
+        requestObserver.onNext(ClientData.newBuilder()
+                .setHeartBeat(HeartBeat.newBuilder().build())
+                .build());
     }
 }
