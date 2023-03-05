@@ -1,9 +1,16 @@
 package com.grpc.hogwarts.client;
 
 import com.grpc.hogwarts.service.*;
+import io.grpc.CallOptions;
 import io.grpc.Channel;
+import io.grpc.ClientCall;
+import io.grpc.ClientInterceptor;
+import io.grpc.ForwardingClientCall;
+import io.grpc.ForwardingClientCallListener;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
+import io.grpc.Metadata;
+import io.grpc.MethodDescriptor;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 
@@ -23,7 +30,7 @@ public class HogwartsClient {
     private int retryCount = 0;
 
     public HogwartsClient(Channel channel){
-        stub = HogwartsServiceGrpc.newStub(channel);
+        stub = HogwartsServiceGrpc.newStub(channel).withInterceptors(new AuthorizationClientInterceptor());
     }
     public static void main(String[] args) {
         ManagedChannel channel = ManagedChannelBuilder.forAddress("localhost", 8080).usePlaintext().build();
@@ -52,17 +59,17 @@ public class HogwartsClient {
                 }
             }
 
-                @Override
+            @Override
             public void onError(Throwable throwable) {
                 //on error
                 Status status = Status.fromThrowable(throwable);
                 System.out.println("Error: " + status);
-                    try {
-                        retryConnection();
-                    } catch (InterruptedException e) {
-                        throw new RuntimeException(e);
-                    }
+                try {
+                    retryConnection();
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
                 }
+            }
 
             @Override
             public void onCompleted() {
@@ -188,5 +195,49 @@ class HeartBeatService extends TimerTask {
         requestObserver.onNext(ClientData.newBuilder()
                 .setHeartBeat(HeartBeat.newBuilder().build())
                 .build());
+    }
+}
+
+class AuthorizationClientInterceptor implements ClientInterceptor {
+
+    @Override
+    public <ReqT, RespT> ClientCall<ReqT, RespT> interceptCall(MethodDescriptor<ReqT, RespT> method, CallOptions callOptions, Channel next) {
+        // intercept server message and check if it is authorized
+        return new ForwardingClientCall.SimpleForwardingClientCall<>(next.newCall(method, callOptions)) {
+            private boolean isAuthorized = true;
+            @Override
+            public void sendMessage(ReqT message) {
+                if (!isAuthorized) {
+                    return;
+                }
+                super.sendMessage(message);
+            }
+
+            @Override
+            public void start(Listener<RespT> responseListener, Metadata headers) {
+                super.start(new ForwardingClientCallListener.SimpleForwardingClientCallListener<>(responseListener) {
+                    @Override
+                    public void onHeaders(Metadata headers) {
+                        // intercept server message and check if it is authorized
+                        if (headers.containsKey(Metadata.Key.of("authorization", Metadata.ASCII_STRING_MARSHALLER))) {
+                            String authorization = headers.get(
+                                    Metadata.Key.of("authorization", Metadata.ASCII_STRING_MARSHALLER));
+                            //print authorization
+                            System.out.println("Authorization: " + authorization);
+                            if (authorization != null && authorization.equals("hogwarts123")) {
+                                System.out.println("Server is authorized");
+                                isAuthorized = true;
+                            } else {
+                                isAuthorized = false;
+                            }
+                        } else {
+                            System.out.println("Server is not authorized");
+                            isAuthorized = false;
+                        }
+                        super.onHeaders(headers);
+                    }
+                }, headers);
+            }
+        };
     }
 }

@@ -1,8 +1,13 @@
 
 package com.grpc.hogwarts.service;
 
+import io.grpc.ForwardingServerCall;
+import io.grpc.Metadata;
 import io.grpc.Server;
 import io.grpc.ServerBuilder;
+import io.grpc.ServerCall;
+import io.grpc.ServerCallHandler;
+import io.grpc.ServerInterceptor;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 
@@ -22,7 +27,7 @@ public class HogwartsServer  {
                     public StreamObserver<ClientData> connect(StreamObserver<ServerData> responseObserver) {
                         return new HogwartsServerObserver(responseObserver, observers);
                     }
-                })
+                }).intercept(getAuthorizationInterceptor())
                 .build();
         server.start();
         System.out.println("Server started on port: " + server.getPort());
@@ -65,6 +70,10 @@ public class HogwartsServer  {
                 break;
             }
         }
+    }
+
+    private static ServerInterceptor getAuthorizationInterceptor() {
+        return new AuthorizationInterceptor();
     }
 }
 
@@ -109,6 +118,23 @@ class HogwartsServerObserver implements StreamObserver<ClientData> {
         //on completion
         System.out.println("Client " + clientId + "has completed sending us something");
         serverObservers.remove(clientId);
+    }
+}
+
+class AuthorizationInterceptor implements ServerInterceptor {
+    @Override
+    public <ReqT, RespT> ServerCall.Listener<ReqT> interceptCall(ServerCall<ReqT, RespT> serverCall,
+                                                                 Metadata metadata,
+                                                                 ServerCallHandler<ReqT, RespT> serverCallHandler) {
+
+        // add authorization header to metadata before sending to client
+        return serverCallHandler.startCall(new ForwardingServerCall.SimpleForwardingServerCall<ReqT, RespT>(serverCall) {
+            @Override
+            public void sendHeaders(Metadata responseHeaders) {
+                responseHeaders.put(Metadata.Key.of("authorization", Metadata.ASCII_STRING_MARSHALLER), "hogwarts123");
+                super.sendHeaders(responseHeaders);
+            }
+        }, metadata);
     }
 }
 
